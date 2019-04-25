@@ -310,7 +310,7 @@
     {
         _imageView = [[UIImageView alloc] initWithFrame:self.bounds];
         _imageView.contentMode = UIViewContentModeScaleAspectFill;
-        _imageView.layer.maskedCorners = YES;
+        _imageView.layer.masksToBounds = YES;
         _imageView.translatesAutoresizingMaskIntoConstraints = NO;
     }
     return _imageView;
