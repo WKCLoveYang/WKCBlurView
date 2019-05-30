@@ -5,14 +5,7 @@
 
 ` #import <WKCBlurView/UIView+Blur.h>`
 
-直接创建WKCBlurView, `blurType`, `blurRadius`,  `blurColor` 可自定义, 或是直接通过分类快速使用.
-
-```swift
-
-self.view.blurType = UIViewBlurTypeLight;
-self.view.shouldShowBlur = YES;
-
-```
+直接创建WKCBlurView, `model`, `blurRadius`,  `blurColor` 可自定义, 或是直接通过分类快速使用.
 
   ![Alt text](https://github.com/WKCLoveYang/WKCBlurView/raw/master/screenShort/blur.gif).
 

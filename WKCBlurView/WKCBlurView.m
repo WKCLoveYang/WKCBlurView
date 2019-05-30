@@ -113,7 +113,7 @@
 
 @interface WKCBlurView()
 
-@property (nonatomic, strong) CALayer *tintLayer;
+@property (nonatomic, strong) UIView *tintView;
 
 - (void)renderLayerWithView:(UIView*)superview;
 
@@ -186,24 +186,74 @@
 
 @implementation WKCBlurView
 
++ (instancetype)blurWithMode:(WKCBlurViewMode)mode
+{
+    WKCBlurView * blur = [[WKCBlurView alloc] initWithMode:mode];
+    return blur;
+}
+
+- (instancetype)initWithMode:(WKCBlurViewMode)mode
+{
+    if (self = [super init]) {
+        [self setupParams];
+        switch (mode) {
+            case WKCBlurViewModeLight:
+                self.blurColor = [UIColor.whiteColor colorWithAlphaComponent:0.1];
+                break;
+            case WKCBlurViewModeExtreLight:
+                self.blurColor = [UIColor.whiteColor colorWithAlphaComponent:0.5];
+                break;
+                
+            case WKCBlurViewModeDark:
+                self.blurColor = [UIColor.blackColor colorWithAlphaComponent:0.15];
+                break;
+                
+            case WKCBlurViewModeExtreDark:
+                self.blurColor = [UIColor.blackColor colorWithAlphaComponent:0.5];
+                break;
+                
+            default:
+                break;
+        }
+    }
+    
+    return self;
+}
+
+- (void)setupParams
+{
+    self.blurRadius = 1.0;
+    
+    self.tintView = [[UIView alloc] init];
+    
+    self.blurColor = [UIColor clearColor];
+    
+    [self addSubview:self.tintView];
+    [self addTintviewLayout];
+    
+    self.clipsToBounds = YES;
+}
+
 - (id)initWithFrame:(CGRect)frame
 {
     self = [super initWithFrame:frame];
     if (self) {
-        
-        self.blurRadius = 1.0;
-
-        self.tintLayer = [[CALayer alloc] init];
-        self.tintLayer.frame = self.bounds;
-        self.tintLayer.opacity = 0.1;
-        
-        self.tint = [UIColor clearColor];
-        
-        [self.layer addSublayer:self.tintLayer];
-        
-        self.clipsToBounds = YES;
+        [self setupParams];
     }
     return self;
+}
+
+- (void)addTintviewLayout
+{
+    _tintView.translatesAutoresizingMaskIntoConstraints = NO;
+    NSLayoutConstraint * top = [NSLayoutConstraint constraintWithItem:_tintView attribute:NSLayoutAttributeTop relatedBy:NSLayoutRelationEqual toItem:self attribute:NSLayoutAttributeTop multiplier:1.0 constant:0];
+    NSLayoutConstraint * bottom = [NSLayoutConstraint constraintWithItem:_tintView attribute:NSLayoutAttributeBottom relatedBy:NSLayoutRelationEqual toItem:self attribute:NSLayoutAttributeBottom multiplier:1.0 constant:0];
+    NSLayoutConstraint * leading = [NSLayoutConstraint constraintWithItem:_tintView attribute:NSLayoutAttributeLeading relatedBy:NSLayoutRelationEqual toItem:self attribute:NSLayoutAttributeLeading multiplier:1.0 constant:0];
+    NSLayoutConstraint * traing = [NSLayoutConstraint constraintWithItem:_tintView attribute:NSLayoutAttributeTrailing relatedBy:NSLayoutRelationEqual toItem:self attribute:NSLayoutAttributeTrailing multiplier:1.0 constant:0];
+    [self addConstraint:top];
+    [self addConstraint:bottom];
+    [self addConstraint:leading];
+    [self addConstraint:traing];
 }
 
 - (void)dealloc
@@ -224,12 +274,13 @@
     });
 }
 
-- (void)setTint:(UIColor*)tint
+- (void)setBlurColor:(UIColor *)blurColor
 {
-    _tint = tint;
-    self.tintLayer.backgroundColor = _tint.CGColor;
-    [self.tintLayer setNeedsDisplay];
+    _blurColor = blurColor;
+    self.tintView.backgroundColor = _blurColor;
+    [self.tintView setNeedsDisplay];
 }
+
 
 - (void)willMoveToSuperview:(UIView*)superview
 {
