@@ -1,197 +1,97 @@
 //
 //  WKCBlurView.m
-//  ddasd
+//  QuizYard
 //
-//  Created by WeiKunChao on 2019/4/22.
-//  Copyright © 2019 SecretLisa. All rights reserved.
+//  Created by WeiKunChao on 2019/5/30.
+//  Copyright © 2019 QuizYard. All rights reserved.
 //
 
 #import "WKCBlurView.h"
-@import Accelerate;
+#import <QuartzCore/QuartzCore.h>
+#import <Accelerate/Accelerate.h>
 
-@interface UIImage (blur)
+@interface UIImage (Blur)
 
-- (UIImage *)applyBlurWithRadius:(CGFloat)blurRadius
-                       tintColor:(UIColor *)tintColor
-           saturationDeltaFactor:(CGFloat)saturationDeltaFactor
-                       maskImage:(UIImage *)maskImage;
+- (UIImage*)drn_boxblurImageWithBlur:(CGFloat)blur;
 
 @end
 
-@implementation UIImage (blur)
+@implementation UIImage (Blur)
 
-- (UIImage *)applyBlurWithRadius:(CGFloat)blurRadius
-                       tintColor:(UIColor *)tintColor
-           saturationDeltaFactor:(CGFloat)saturationDeltaFactor
-                       maskImage:(UIImage *)maskImage
+- (UIImage*)drn_boxblurImageWithBlur:(CGFloat)blur
 {
+    if (blur < 0.f || blur > 1.f) {
+        blur = 0.5f;
+    }
+    int boxSize = (int)(blur * 40);
+    boxSize = boxSize - (boxSize % 2) + 1;
+    
+    CGImageRef img = self.CGImage;
+    vImage_Buffer inBuffer, outBuffer;
+    vImage_Error error;
+    void *pixelBuffer;
+    
+    CGDataProviderRef inProvider = CGImageGetDataProvider(img);
+    CFDataRef inBitmapData = CGDataProviderCopyData(inProvider);
+    
+    inBuffer.width = CGImageGetWidth(img);
+    inBuffer.height = CGImageGetHeight(img);
+    inBuffer.rowBytes = CGImageGetBytesPerRow(img);
+    
+    inBuffer.data = (void*)CFDataGetBytePtr(inBitmapData);
+    
+    //create vImage_Buffer for output
+    pixelBuffer = malloc(CGImageGetBytesPerRow(img) * CGImageGetHeight(img));
+    
+    if(pixelBuffer == NULL)
+        NSLog(@"No pixelbuffer");
+    
+    outBuffer.data = pixelBuffer;
+    outBuffer.width = CGImageGetWidth(img);
+    outBuffer.height = CGImageGetHeight(img);
+    outBuffer.rowBytes = CGImageGetBytesPerRow(img);
+    
+    void *pixelBuffer2 = malloc(CGImageGetBytesPerRow(img) * CGImageGetHeight(img));
+    vImage_Buffer outBuffer2;
+    outBuffer2.data = pixelBuffer2;
+    outBuffer2.width = CGImageGetWidth(img);
+    outBuffer2.height = CGImageGetHeight(img);
+    outBuffer2.rowBytes = CGImageGetBytesPerRow(img);
+    
+    error = vImageBoxConvolve_ARGB8888(&inBuffer, &outBuffer2, NULL, 0, 0, boxSize, boxSize, NULL, kvImageEdgeExtend);
+    error = vImageBoxConvolve_ARGB8888(&outBuffer2, &inBuffer, NULL, 0, 0, boxSize, boxSize, NULL, kvImageEdgeExtend);
+    error = vImageBoxConvolve_ARGB8888(&inBuffer, &outBuffer, NULL, 0, 0, boxSize, boxSize, NULL, kvImageEdgeExtend);
+    
+    if (error) {
+        NSLog(@"error from convolution %ld", error);
+    }
+    
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    CGContextRef ctx = CGBitmapContextCreate(outBuffer.data,
+                                             outBuffer.width,
+                                             outBuffer.height,
+                                             8,
+                                             outBuffer.rowBytes,
+                                             colorSpace,
+                                             kCGImageAlphaNoneSkipLast);
+    CGImageRef imageRef = CGBitmapContextCreateImage (ctx);
+    UIImage *returnImage = [UIImage imageWithCGImage:imageRef];
 
-    if (self.size.width < 1 || self.size.height < 1) {
-        
-        NSLog (@"*** error: invalid size: (%.2f x %.2f). Both dimensions must be >= 1: %@", self.size.width, self.size.height, self);
-        return nil;
-    }
+    CGContextRelease(ctx);
+    CGColorSpaceRelease(colorSpace);
     
-    if (!self.CGImage) {
-        
-        NSLog (@"*** error: image must be backed by a CGImage: %@", self);
-        return nil;
-    }
+    free(pixelBuffer);
+    free(pixelBuffer2);
     
-    if (maskImage && !maskImage.CGImage) {
-        
-        NSLog (@"*** error: maskImage must be backed by a CGImage: %@", maskImage);
-        return nil;
-    }
+    CFRelease(inBitmapData);
     
-    CGRect   imageRect   = { CGPointZero, self.size };
-    UIImage *effectImage = self;
+    CGImageRelease(imageRef);
     
-    BOOL hasBlur             = blurRadius > __FLT_EPSILON__;
-    BOOL hasSaturationChange = fabs(saturationDeltaFactor - 1.) > __FLT_EPSILON__;
-    if (hasBlur || hasSaturationChange) {
-        
-        UIGraphicsBeginImageContextWithOptions(self.size, NO, [[UIScreen mainScreen] scale]);
-        CGContextRef effectInContext = UIGraphicsGetCurrentContext();
-        CGContextScaleCTM(effectInContext, 1.0, -1.0);
-        CGContextTranslateCTM(effectInContext, 0, -self.size.height);
-        CGContextDrawImage(effectInContext, imageRect, self.CGImage);
-        
-        vImage_Buffer effectInBuffer;
-        effectInBuffer.data     = CGBitmapContextGetData(effectInContext);
-        effectInBuffer.width    = CGBitmapContextGetWidth(effectInContext);
-        effectInBuffer.height   = CGBitmapContextGetHeight(effectInContext);
-        effectInBuffer.rowBytes = CGBitmapContextGetBytesPerRow(effectInContext);
-        
-        UIGraphicsBeginImageContextWithOptions(self.size, NO, [[UIScreen mainScreen] scale]);
-        CGContextRef effectOutContext = UIGraphicsGetCurrentContext();
-        vImage_Buffer effectOutBuffer;
-        effectOutBuffer.data     = CGBitmapContextGetData(effectOutContext);
-        effectOutBuffer.width    = CGBitmapContextGetWidth(effectOutContext);
-        effectOutBuffer.height   = CGBitmapContextGetHeight(effectOutContext);
-        effectOutBuffer.rowBytes = CGBitmapContextGetBytesPerRow(effectOutContext);
-        
-        if (hasBlur) {
-            
-            CGFloat inputRadius = blurRadius * [[UIScreen mainScreen] scale];
-            NSUInteger radius = floor(inputRadius * 3. * sqrt(2 * M_PI) / 4 + 0.5);
-            if (radius % 2 != 1) {
-                
-                radius += 1; // force radius to be odd so that the three box-blur methodology works.
-            }
-            
-            vImageBoxConvolve_ARGB8888(&effectInBuffer, &effectOutBuffer, NULL, 0, 0, (uint32_t)radius, (uint32_t)radius, 0, kvImageEdgeExtend);
-            vImageBoxConvolve_ARGB8888(&effectOutBuffer, &effectInBuffer, NULL, 0, 0, (uint32_t)radius, (uint32_t)radius, 0, kvImageEdgeExtend);
-            vImageBoxConvolve_ARGB8888(&effectInBuffer, &effectOutBuffer, NULL, 0, 0, (uint32_t)radius, (uint32_t)radius, 0, kvImageEdgeExtend);
-        }
-        
-        BOOL effectImageBuffersAreSwapped = NO;
-        if (hasSaturationChange) {
-            
-            CGFloat s = saturationDeltaFactor;
-            CGFloat floatingPointSaturationMatrix[] = {
-                0.0722 + 0.9278 * s,  0.0722 - 0.0722 * s,  0.0722 - 0.0722 * s,  0,
-                0.7152 - 0.7152 * s,  0.7152 + 0.2848 * s,  0.7152 - 0.7152 * s,  0,
-                0.2126 - 0.2126 * s,  0.2126 - 0.2126 * s,  0.2126 + 0.7873 * s,  0,
-                0,                    0,                    0,  1,
-            };
-            const int32_t divisor = 256;
-            NSUInteger matrixSize = sizeof(floatingPointSaturationMatrix)/sizeof(floatingPointSaturationMatrix[0]);
-            int16_t saturationMatrix[matrixSize];
-            
-            for (NSUInteger i = 0; i < matrixSize; ++i) {
-                
-                saturationMatrix[i] = (int16_t)roundf(floatingPointSaturationMatrix[i] * divisor);
-            }
-            
-            if (hasBlur) {
-                
-                vImageMatrixMultiply_ARGB8888(&effectOutBuffer, &effectInBuffer, saturationMatrix, divisor, NULL, NULL, kvImageNoFlags);
-                effectImageBuffersAreSwapped = YES;
-                
-            } else {
-                
-                vImageMatrixMultiply_ARGB8888(&effectInBuffer, &effectOutBuffer, saturationMatrix, divisor, NULL, NULL, kvImageNoFlags);
-            }
-        }
-        
-        if (!effectImageBuffersAreSwapped) {
-            
-            effectImage = UIGraphicsGetImageFromCurrentImageContext();
-        }
-        
-        UIGraphicsEndImageContext();
-        
-        if (effectImageBuffersAreSwapped) {
-            
-            effectImage = UIGraphicsGetImageFromCurrentImageContext();
-        }
-        
-        UIGraphicsEndImageContext();
-    }
     
-    // Set up output context.
-    UIGraphicsBeginImageContextWithOptions(self.size, NO, [[UIScreen mainScreen] scale]);
-    CGContextRef outputContext = UIGraphicsGetCurrentContext();
-    CGContextScaleCTM(outputContext, 1.0, -1.0);
-    CGContextTranslateCTM(outputContext, 0, -self.size.height);
     
-    // Draw base image.
-    CGContextDrawImage(outputContext, imageRect, self.CGImage);
-    
-    // Draw effect image.
-    if (hasBlur) {
-        
-        CGContextSaveGState(outputContext);
-        
-        if (maskImage) {
-            
-            CGContextClipToMask(outputContext, imageRect, maskImage.CGImage);
-        }
-        
-        CGContextDrawImage(outputContext, imageRect, effectImage.CGImage);
-        CGContextRestoreGState(outputContext);
-    }
-    
-    // Add in color tint.
-    if (tintColor) {
-        
-        CGContextSaveGState(outputContext);
-        CGContextSetFillColorWithColor(outputContext, tintColor.CGColor);
-        CGContextFillRect(outputContext, imageRect);
-        CGContextRestoreGState(outputContext);
-    }
-    
-    // Output image is ready.
-    UIImage *outputImage = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
-    
-    return outputImage;
+    return returnImage;
 }
 
-@end
-
-
-
-
-
-@interface UIView (capture)
-
-- (UIImage *)toImage;
-
-@end
-
-@implementation UIView (capture)
-
-- (UIImage *)toImage
-{
-    [self.superview layoutIfNeeded];
-    UIGraphicsBeginImageContextWithOptions(self.bounds.size, NO, 0);
-    [self.layer renderInContext:UIGraphicsGetCurrentContext()];
-    UIImage * image = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
-    return image;
-}
 
 @end
 
@@ -199,121 +99,192 @@
 
 
 
+@interface WKCBlurViewManager : NSObject
 
+@property (nonatomic, strong) NSMutableArray *views;
+
++ (id)sharedManager;
+
+- (void)registerView:(WKCBlurView *)view;
+- (void)deregisterView:(WKCBlurView *)view;
+
+@end
 
 
 @interface WKCBlurView()
 
-@property (nonatomic, strong) UIImageView * imageView;
+@property (nonatomic, strong) CALayer *tintLayer;
+
+- (void)renderLayerWithView:(UIView*)superview;
 
 @end
 
+
+
+
+
+
+
+
+
+
+
+@implementation WKCBlurViewManager
+
++ (id)sharedManager
+{
+    static WKCBlurViewManager * instance = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        instance = [[WKCBlurViewManager alloc] init];
+    });
+    
+    return instance;
+}
+
+- (id)init
+{
+    if (self = [super init])
+        self.views = [@[] mutableCopy];
+    
+    return self;
+}
+
+
+
+- (void)registerView:(WKCBlurView *)view
+{
+    if (![self.views containsObject:view]) [self.views addObject:view];
+    [self refresh];
+}
+
+- (void)deregisterView:(WKCBlurView *)view
+{
+    [self.views removeObject:view];
+    [self refresh];
+}
+
+- (void)refresh
+{
+    if (!self.views.count) return;
+    
+    for (WKCBlurView *view in self.views)
+        [view renderLayerWithView:view.superview];
+    
+    double delayInSeconds = self.views.count * (1/30.f);
+    dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delayInSeconds * NSEC_PER_SEC));
+    dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
+        [self refresh];
+    });
+}
+
+@end
+
+
+
+
+
 @implementation WKCBlurView
 
-- (instancetype)initWithFrame:(CGRect)frame
+- (id)initWithFrame:(CGRect)frame
 {
-    if (self = [super initWithFrame:frame])
-    {
-        _blurRadius = 10.0;
-        _blurColor = [UIColor.whiteColor colorWithAlphaComponent:0.3];
+    self = [super initWithFrame:frame];
+    if (self) {
         
-        [self wkc_addSubView];
+        self.blurRadius = 1.0;
+
+        self.tintLayer = [[CALayer alloc] init];
+        self.tintLayer.frame = self.bounds;
+        self.tintLayer.opacity = 0.1;
+        
+        self.tint = [UIColor clearColor];
+        
+        [self.layer addSublayer:self.tintLayer];
+        
+        self.clipsToBounds = YES;
     }
     return self;
 }
 
-- (void)setBlurType:(WKCBlurType)blurType
+- (void)dealloc
 {
-    switch (blurType) {
-        case WKCBlurTypeExtraLight:
-        {
-            _blurColor = [UIColor colorWithWhite:0.97 alpha:0.82];
-        }
-            break;
+    [[WKCBlurViewManager sharedManager] deregisterView:self];
+}
+
+
+- (void)setRenderStatic:(BOOL)renderStatic
+{
+    _renderStatic = renderStatic;
+    
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (renderStatic)
+            [[WKCBlurViewManager sharedManager] deregisterView:self];
+        else
+            [[WKCBlurViewManager sharedManager] registerView:self];
+    });
+}
+
+- (void)setTint:(UIColor*)tint
+{
+    _tint = tint;
+    self.tintLayer.backgroundColor = _tint.CGColor;
+    [self.tintLayer setNeedsDisplay];
+}
+
+- (void)willMoveToSuperview:(UIView*)superview
+{
+    [self renderLayerWithView:superview];
+}
+
+- (void)didMoveToSuperview
+{
+    if (nil != self.superview) {
         
-        case WKCBlurTypeDark:
-        {
-            _blurColor = [UIColor colorWithWhite:0 alpha:0.3];
-        }
-            break;
-            
-        case WKCBlurTypeExtraDark:
-        {
-            _blurColor = [UIColor colorWithWhite:0 alpha:0.65];
-        }
-            break;
-            
-        default:
-            break;
+        if (!self.renderStatic)
+            [[WKCBlurViewManager sharedManager] registerView:self];
+    } else {
+        
+        [[WKCBlurViewManager sharedManager] deregisterView:self];
     }
 }
 
-- (void)startBlur
+- (void)renderLayerWithView:(UIView*)superview
 {
-    [self wkc_refreshImage];
+    CGRect visibleRect = [superview convertRect:self.frame toView:self];
+    visibleRect.origin.y += self.frame.origin.y;
+    visibleRect.origin.x += self.frame.origin.x;
+    
+    CGFloat alpha = self.alpha;
+    [self toggleBlurViewsInView:superview hidden:YES alpha:alpha];
+    
+    UIGraphicsBeginImageContextWithOptions(visibleRect.size, NO, 1.0);
+    CGContextRef context = UIGraphicsGetCurrentContext();
+    CGContextTranslateCTM(context, -visibleRect.origin.x, -visibleRect.origin.y);
+    CALayer *layer = superview.layer;
+    [layer renderInContext:context];
+
+    [self toggleBlurViewsInView:superview hidden:NO alpha:alpha];
+    
+    __block UIImage *image = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+
+        NSData *imageData = UIImageJPEGRepresentation(image, 0.1);
+        image = [[UIImage imageWithData:imageData] drn_boxblurImageWithBlur:self.blurRadius];
+        
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            self.layer.contents = (id)image.CGImage;
+        });
+    });
 }
 
-- (void)wkc_refreshImage
+- (void)toggleBlurViewsInView:(UIView*)view hidden:(BOOL)hidden alpha:(CGFloat)originalAlpha
 {
-    self.imageView.image = [_contentView.toImage applyBlurWithRadius:_blurRadius
-                                                           tintColor:_blurColor
-                                               saturationDeltaFactor:1.8
-                                                           maskImage:nil];
+    for (UIView *subview in view.subviews)
+        if ([subview isKindOfClass:WKCBlurView.class])
+            subview.alpha = hidden ? 0.f : originalAlpha;
 }
 
-
-- (void)wkc_addSubView
-{
-    [self addSubview:self.imageView];
-    
-    NSLayoutConstraint * top = [NSLayoutConstraint constraintWithItem:self.imageView
-                                                            attribute:NSLayoutAttributeTop
-                                                            relatedBy:NSLayoutRelationEqual
-                                                               toItem:self
-                                                            attribute:NSLayoutAttributeTop
-                                                           multiplier:1.0
-                                                             constant:0];
-    
-    NSLayoutConstraint * bottom = [NSLayoutConstraint constraintWithItem:self.imageView
-                                                               attribute:NSLayoutAttributeBottom
-                                                               relatedBy:NSLayoutRelationEqual
-                                                                  toItem:self
-                                                               attribute:NSLayoutAttributeBottom
-                                                              multiplier:1.0
-                                                                constant:0];
-    
-    NSLayoutConstraint * leading = [NSLayoutConstraint constraintWithItem:self.imageView
-                                                                attribute:NSLayoutAttributeLeading
-                                                                relatedBy:NSLayoutRelationEqual
-                                                                   toItem:self
-                                                                attribute:NSLayoutAttributeLeading
-                                                               multiplier:1.0
-                                                                 constant:0];
-    
-    NSLayoutConstraint * traing = [NSLayoutConstraint constraintWithItem:self.imageView
-                                                               attribute:NSLayoutAttributeTrailing
-                                                               relatedBy:NSLayoutRelationEqual
-                                                                  toItem:self
-                                                               attribute:NSLayoutAttributeTrailing
-                                                              multiplier:1.0
-                                                                constant:0];
-    
-    [self addConstraint:top];
-    [self addConstraint:bottom];
-    [self addConstraint:leading];
-    [self addConstraint:traing];
-}
-
-- (UIImageView *)imageView
-{
-    if (!_imageView)
-    {
-        _imageView = [[UIImageView alloc] initWithFrame:self.bounds];
-        _imageView.contentMode = UIViewContentModeScaleAspectFill;
-        _imageView.layer.masksToBounds = YES;
-        _imageView.translatesAutoresizingMaskIntoConstraints = NO;
-    }
-    return _imageView;
-}
 
 @end
