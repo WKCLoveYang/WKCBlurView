@@ -34,7 +34,7 @@ typedef NS_ENUM(NSInteger, WKCBlurViewMode) {
 @property (nonatomic, assign) WKCBlurViewMode model;
 // 是否开启时时模糊, 默认开启. (模糊完,关闭,不然会很卡).
 @property (nonatomic, assign) BOOL renderStatic;
-// 模糊系数
+// 模糊系数 (0 , 1) (0不模糊,1全模糊)
 @property (nonatomic, assign) CGFloat blurRadius;
 // 自定义颜色
 @property (nonatomic, strong) UIColor * blurColor;
